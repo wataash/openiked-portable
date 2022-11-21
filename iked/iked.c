@@ -236,6 +236,92 @@ main(int argc, char *argv[])
 	setproctitle("parent");
 	log_procinit("parent");
 
+#pragma ide diagnostic ignored "Simplify"
+	// test ikev2_msg_send()
+	if (0) {
+		struct sockaddr_storage ss = {};
+		ss.ss_family = AF_INET;
+		int s = udp_bind((struct sockaddr *)&ss, htons(IKED_IKE_PORT)); // XXX: if -1
+
+		// clang-format offffffTODO
+		struct iked_sa *sa = config_new_sa(env, 1);
+		sa->sa_hdr.sh_ispi = htole64(0xaaaabbbbcccc0001U); // override
+		sa->sa_hdr.sh_rspi = htole64(0xaaaabbbbcccc0002U);
+		((struct sockaddr_in *)&sa->sa_peer.addr)->sin_family = AF_INET;
+		((struct sockaddr_in *)&sa->sa_peer.addr)->sin_port = htons(IKED_IKE_PORT);
+		((struct sockaddr_in *)&sa->sa_peer.addr)->sin_addr.s_addr = htonl(0x7f000002U); // 127.0.0.2
+		// ((struct sockaddr_in *)&sa->sa_peer.addr)->sin_addr.s_addr = htonl(0xac1f6455U); // 172.31.100.85
+		((struct sockaddr_in *)&sa->sa_local.addr)->sin_family = AF_INET;
+		((struct sockaddr_in *)&sa->sa_local.addr)->sin_port = htons(IKED_IKE_PORT);
+		((struct sockaddr_in *)&sa->sa_local.addr)->sin_addr.s_addr = htonl(0x7f000001U); // 127.0.0.1
+		// ((struct sockaddr_in *)&sa->sa_local.addr)->sin_addr.s_addr = htonl(0xac1f6464U); // 172.31.100.100
+		sa->sa_fd = s;
+
+		// TODO
+		// ikev2_msg_init()
+		// ikev2_add_header()
+		// ikev2_msg_send()
+
+		log_warnx("bye");
+		exit(0);
+	}
+	// test ikev2_send_ike_e()
+	if (0) {
+		struct sockaddr_storage ss = {};
+		ss.ss_family = AF_INET;
+		int s = udp_bind((struct sockaddr *)&ss, htons(IKED_IKE_PORT)); // XXX: if -1
+
+		// clang-format offffffTODO
+		struct iked_sa *sa = config_new_sa(env, 1);
+		sa->sa_hdr.sh_ispi = htole64(0xaaaabbbbcccc0001U); // override
+		sa->sa_hdr.sh_rspi = htole64(0xaaaabbbbcccc0002U);
+		((struct sockaddr_in *)&sa->sa_peer.addr)->sin_family = AF_INET;
+		((struct sockaddr_in *)&sa->sa_peer.addr)->sin_port = htons(IKED_IKE_PORT);
+		((struct sockaddr_in *)&sa->sa_peer.addr)->sin_addr.s_addr = htonl(0x7f000002U); // 127.0.0.2
+		// ((struct sockaddr_in *)&sa->sa_peer.addr)->sin_addr.s_addr = htonl(0xac1f6455U); // 172.31.100.85
+		((struct sockaddr_in *)&sa->sa_local.addr)->sin_family = AF_INET;
+		((struct sockaddr_in *)&sa->sa_local.addr)->sin_port = htons(IKED_IKE_PORT);
+		((struct sockaddr_in *)&sa->sa_local.addr)->sin_addr.s_addr = htonl(0x7f000001U); // 127.0.0.1
+		// ((struct sockaddr_in *)&sa->sa_local.addr)->sin_addr.s_addr = htonl(0xac1f6464U); // 172.31.100.100
+		sa->sa_fd = s;
+		sa->sa_state = IKEV2_STATE_ESTABLISHED;
+		sa->sa_stateflags = IKED_REQ_AUTH | IKED_REQ_AUTHVALID | IKED_REQ_SA;
+		sa->sa_stateinit = IKED_REQ_AUTH;
+		sa->sa_statevalid = IKED_REQ_AUTHVALID | IKED_REQ_SA;
+		sa->sa_policy = NULL; // TODO
+		sa->sa_tag  = "";
+
+		unsigned char tmp[32];
+		memcpy(tmp, "DataDataDataDataDataDataDataData", 32);
+		tmp[31] = 0x01U;
+		sa->sa_kex.kex_inonce = ibuf_new(tmp, sizeof(tmp));
+		tmp[31] = 0x02U;
+		sa->sa_kex.kex_rnonce = ibuf_new(tmp, sizeof(tmp));
+		sa->sa_kex.kex_dhgroup = group_get(IKEV2_XFORMDH_CURVE25519);
+		tmp[31] = 0xa1U;
+		sa->sa_kex.kex_dhiexchange = ibuf_new(tmp, sizeof(tmp));
+		tmp[31] = 0xa2U;
+		sa->sa_kex.kex_dhrexchange = ibuf_new(tmp, sizeof(tmp));
+		sa->sa_kex.kex_dhpeer = sa->sa_kex.kex_dhrexchange;
+
+		sa->sa_prf = hash_new(IKEV2_XFORMTYPE_PRF, IKEV2_XFORMPRF_HMAC_SHA2_256); // XXX: NULL check
+		sa->sa_integr = hash_new(IKEV2_XFORMTYPE_INTEGR, IKEV2_XFORMAUTH_HMAC_SHA2_256_128); // XXX NULL check
+		sa->sa_encr = cipher_new(IKEV2_XFORMTYPE_ENCR, IKEV2_XFORMENCR_AES_CBC, 256); // XXX: NULL check
+
+		sa->sa_key_iencr = &(struct ibuf){};
+		sa->sa_key_rencr = &(struct ibuf){};
+
+		int	 ikev2_sa_keys(struct iked *, struct iked_sa *, struct ibuf *);
+		ikev2_sa_keys(env, sa, NULL);
+
+		struct iked_message		 req;
+
+		ikev2_send_ike_e(env, sa, NULL, IKEV2_PAYLOAD_NONE,
+				 IKEV2_EXCHANGE_INFORMATIONAL, 0);
+		log_warnx("bye");
+		exit(0);
+	}
+
 	event_init();
 
 	signal_set(&ps->ps_evsigint, SIGINT, parent_sig_handler, ps);

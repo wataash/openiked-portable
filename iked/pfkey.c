@@ -2096,7 +2096,10 @@ pfkey_init(struct iked *env, int fd)
 	    EV_READ|EV_PERSIST, pfkey_dispatch, env);
 	event_add(&env->sc_pfkeyev, NULL);
 
+	// SADB_FLUSH -> 既存の xfrm policy を消してしまうので
+#ifndef WATAASH_HACK
 	pfkey_flush(env);
+#endif // WATAASH_HACK
 
 	/* Register it to get ESP and AH acquires from the kernel */
 	bzero(&smsg, sizeof(smsg));

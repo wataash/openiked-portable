@@ -141,7 +141,7 @@ target_link_libraries(iked
 
 add_custom_command(
 	OUTPUT parse.c
-	COMMAND yacc -o parse.c ${CMAKE_CURRENT_SOURCE_DIR}/parse.y
+	COMMAND yacc --debug -o parse.c ${CMAKE_CURRENT_SOURCE_DIR}/parse.y
 	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/parse.y
 )
 

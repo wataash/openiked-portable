@@ -5692,7 +5692,7 @@ ikev2_sa_responder(struct iked *env, struct iked_sa *sa, struct iked_sa *osa,
 
 	return (ikev2_sa_keys(env, sa, osa ? osa->sa_key_d : NULL));
 }
-
+static void wireshark_decryption_table_line_print(const struct iked_sa *sa, uint64_t ispi, uint64_t rspi);
 int
 ikev2_sa_keys(struct iked *env, struct iked_sa *sa, struct ibuf *key)
 {
@@ -5901,7 +5901,7 @@ ikev2_sa_keys(struct iked *env, struct iked_sa *sa, struct ibuf *key)
 	print_hexbuf(sa->sa_key_rprf);
 
 	ret = 0;
-
+wireshark_decryption_table_line_print(sa, betoh64(ispi), betoh64(rspi));
  done:
 	ibuf_free(ninr);
 	ibuf_free(dhsecret);
@@ -7742,4 +7742,482 @@ ikev2_log_proposal(struct iked_sa *sa, struct iked_proposals *proposals)
 			    lenstr);
 		}
 	}
+}
+
+#include <stdbool.h>
+
+// -----------------------------------------------------------------------------
+// /home/wsh/qc/strongswan/src/libstrongswan/crypto/crypters/crypter.h
+
+/*
+ * Copyright (C) 2005-2006 Martin Willi
+ * Copyright (C) 2005 Jan Hutter
+ *
+ * Copyright (C) secunet Security Networks AG
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the
+ * Free Software Foundation; either version 2 of the License, or (at your
+ * option) any later version.  See <http://www.fsf.org/copyleft/gpl.txt>.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * for more details.
+ */
+
+typedef enum encryption_algorithm_t encryption_algorithm_t;
+
+/**
+ * Encryption algorithm, as in IKEv2 RFC 3.3.2.
+ */
+enum encryption_algorithm_t {
+	ENCR_DES_IV64 =            1,
+	ENCR_DES =                 2,
+	ENCR_3DES =                3,
+	ENCR_RC5 =                 4,
+	ENCR_IDEA =                5,
+	ENCR_CAST =                6,
+	ENCR_BLOWFISH =            7,
+	ENCR_3IDEA =               8,
+	ENCR_DES_IV32 =            9,
+	ENCR_NULL =               11,
+	ENCR_AES_CBC =            12,
+	/** CTR as specified for IPsec (RFC5930/RFC3686), nonce appended to key */
+	ENCR_AES_CTR =            13,
+	ENCR_AES_CCM_ICV8 =       14,
+	ENCR_AES_CCM_ICV12 =      15,
+	ENCR_AES_CCM_ICV16 =      16,
+	ENCR_AES_GCM_ICV8 =       18,
+	ENCR_AES_GCM_ICV12 =      19,
+	ENCR_AES_GCM_ICV16 =      20,
+	ENCR_NULL_AUTH_AES_GMAC = 21,
+	ENCR_CAMELLIA_CBC =       23,
+	/* CTR as specified for IPsec (RFC5529), nonce appended to key */
+	ENCR_CAMELLIA_CTR =       24,
+	ENCR_CAMELLIA_CCM_ICV8 =  25,
+	ENCR_CAMELLIA_CCM_ICV12 = 26,
+	ENCR_CAMELLIA_CCM_ICV16 = 27,
+	ENCR_CHACHA20_POLY1305 =  28,
+	ENCR_UNDEFINED =        1024,
+	ENCR_DES_ECB =          1025,
+	ENCR_SERPENT_CBC =      1026,
+	ENCR_TWOFISH_CBC =      1027,
+	/* see macros below to handle RC2 (effective) key length */
+	ENCR_RC2_CBC =          1028,
+	ENCR_AES_ECB =			1029,
+	ENCR_AES_CFB =			1030,
+};
+
+#define DES_BLOCK_SIZE			 8
+#define BLOWFISH_BLOCK_SIZE		 8
+#define AES_BLOCK_SIZE			16
+#define CAMELLIA_BLOCK_SIZE		16
+#define SERPENT_BLOCK_SIZE		16
+#define TWOFISH_BLOCK_SIZE		16
+
+// -----------------------------------------------------------------------------
+// /home/wsh/qc/strongswan/src/libstrongswan/crypto/signers/signer.h
+
+/*
+ * Copyright (C) 2005-2009 Martin Willi
+ * Copyright (C) 2005 Jan Hutter
+ *
+ * Copyright (C) secunet Security Networks AG
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the
+ * Free Software Foundation; either version 2 of the License, or (at your
+ * option) any later version.  See <http://www.fsf.org/copyleft/gpl.txt>.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * for more details.
+ */
+
+typedef enum integrity_algorithm_t integrity_algorithm_t;
+
+/**
+ * Integrity algorithm, as in IKEv2 RFC 3.3.2.
+ *
+ * Algorithms not specified in IKEv2 are allocated in private use space.
+ */
+enum integrity_algorithm_t {
+	AUTH_UNDEFINED = 1024,
+	/** RFC4306 */
+	AUTH_HMAC_MD5_96 = 1,
+	/** RFC4306 */
+	AUTH_HMAC_SHA1_96 = 2,
+	/** RFC4306 */
+	AUTH_DES_MAC = 3,
+	/** RFC1826 */
+	AUTH_KPDK_MD5 = 4,
+	/** RFC4306 */
+	AUTH_AES_XCBC_96 = 5,
+	/** RFC4595 */
+	AUTH_HMAC_MD5_128 = 6,
+	/** RFC4595 */
+	AUTH_HMAC_SHA1_160 = 7,
+	/** RFC4494 */
+	AUTH_AES_CMAC_96 = 8,
+	/** RFC4543 */
+	AUTH_AES_128_GMAC = 9,
+	/** RFC4543 */
+	AUTH_AES_192_GMAC = 10,
+	/** RFC4543 */
+	AUTH_AES_256_GMAC = 11,
+	/** RFC4868 */
+	AUTH_HMAC_SHA2_256_128 = 12,
+	/** RFC4868 */
+	AUTH_HMAC_SHA2_384_192 = 13,
+	/** RFC4868 */
+	AUTH_HMAC_SHA2_512_256 = 14,
+	/** private use */
+	AUTH_HMAC_SHA1_128 = 1025,
+	/** SHA256 96 bit truncation variant, supported by Linux kernels */
+	AUTH_HMAC_SHA2_256_96 = 1026,
+	/** SHA256 full length truncation variant, as used in TLS */
+	AUTH_HMAC_SHA2_256_256 = 1027,
+	/** SHA384 full length truncation variant, as used in TLS */
+	AUTH_HMAC_SHA2_384_384 = 1028,
+	/** SHA512 full length truncation variant */
+	AUTH_HMAC_SHA2_512_512 = 1029,
+	/** draft-kanno-ipsecme-camellia-xcbc, not yet assigned by IANA */
+	AUTH_CAMELLIA_XCBC_96 = 1030,
+};
+
+// -----------------------------------------------------------------------------
+// /home/wsh/qc/strongswan/src/libstrongswan/crypto/crypters/crypter.c
+
+/*
+ * Described in header.
+ */
+static bool encryption_algorithm_is_aead(encryption_algorithm_t alg)
+{
+	switch (alg)
+	{
+	case ENCR_AES_CCM_ICV8:
+	case ENCR_AES_CCM_ICV12:
+	case ENCR_AES_CCM_ICV16:
+	case ENCR_AES_GCM_ICV8:
+	case ENCR_AES_GCM_ICV12:
+	case ENCR_AES_GCM_ICV16:
+	case ENCR_NULL_AUTH_AES_GMAC:
+	case ENCR_CAMELLIA_CCM_ICV8:
+	case ENCR_CAMELLIA_CCM_ICV12:
+	case ENCR_CAMELLIA_CCM_ICV16:
+	case ENCR_CHACHA20_POLY1305:
+		return true;
+	default:
+		return false;
+	}
+}
+
+// -----------------------------------------------------------------------------
+// /home/wsh/qc/strongswan/src/libcharon/plugins/save_keys/save_keys_listener.c
+
+/*
+ * Copyright (C) 2018 Tobias Brunner
+ *
+ * Copyright (C) secunet Security Networks AG
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the
+ * Free Software Foundation; either version 2 of the License, or (at your
+ * option) any later version.  See <http://www.fsf.org/copyleft/gpl.txt>.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * for more details.
+ */
+/*
+ * Copyright (C) 2016 Codrut Cristian Grosu (codrut.cristian.grosu@gmail.com)
+ * Copyright (C) 2016 IXIA (http://www.ixiacom.com)
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
+typedef struct algo_map_t algo_map_t;
+
+/**
+ * Mapping strongSwan identifiers to Wireshark names
+ */
+struct algo_map_t {
+
+	/**
+	 * IKE identifier
+	 */
+	const uint16_t ike;
+
+	/**
+	 * Optional key length
+	 */
+	const int key_len;
+
+	/**
+	 * Name of the algorithm in wireshark
+	 */
+	const char *name;
+};
+
+/**
+ * Map an algorithm identifier to a name
+ */
+static inline const char *algo_name(algo_map_t *map, int count,
+	  uint16_t alg, int key_len)
+{
+	int i;
+
+	for (i = 0; i < count; i++)
+	{
+		if (map[i].ike == alg)
+		{
+			if (map[i].key_len == -1 || map[i].key_len == key_len)
+			{
+				return map[i].name;
+			}
+		}
+	}
+	return NULL;
+}
+
+/**
+ * Wireshark IKE algorithm identifiers for encryption
+ */
+static algo_map_t ike_encr[] = {
+    { ENCR_3DES,           -1, "3DES [RFC2451]"                          },
+    { ENCR_NULL,           -1, "NULL [RFC2410]"                          },
+    { ENCR_AES_CBC,       128, "AES-CBC-128 [RFC3602]"                   },
+    { ENCR_AES_CBC,       192, "AES-CBC-192 [RFC3602]"                   },
+    { ENCR_AES_CBC,       256, "AES-CBC-256 [RFC3602]"                   },
+    { ENCR_AES_CTR,       128, "AES-CTR-128 [RFC5930]"                   },
+    { ENCR_AES_CTR,       192, "AES-CTR-192 [RFC5930]"                   },
+    { ENCR_AES_CTR,       256, "AES-CTR-256 [RFC5930]"                   },
+    { ENCR_AES_GCM_ICV8,  128, "AES-GCM-128 with 8 octet ICV [RFC5282]"  },
+    { ENCR_AES_GCM_ICV8,  192, "AES-GCM-192 with 8 octet ICV [RFC5282]"  },
+    { ENCR_AES_GCM_ICV8,  256, "AES-GCM-256 with 8 octet ICV [RFC5282]"  },
+    { ENCR_AES_GCM_ICV12, 128, "AES-GCM-128 with 12 octet ICV [RFC5282]" },
+    { ENCR_AES_GCM_ICV12, 192, "AES-GCM-192 with 12 octet ICV [RFC5282]" },
+    { ENCR_AES_GCM_ICV12, 256, "AES-GCM-256 with 12 octet ICV [RFC5282]" },
+    { ENCR_AES_GCM_ICV16, 128, "AES-GCM-128 with 16 octet ICV [RFC5282]" },
+    { ENCR_AES_GCM_ICV16, 192, "AES-GCM-192 with 16 octet ICV [RFC5282]" },
+    { ENCR_AES_GCM_ICV16, 256, "AES-GCM-256 with 16 octet ICV [RFC5282]" },
+    { ENCR_AES_CCM_ICV8,  128, "AES-CCM-128 with 8 octet ICV [RFC5282]"  },
+    { ENCR_AES_CCM_ICV8,  192, "AES-CCM-192 with 8 octet ICV [RFC5282]"  },
+    { ENCR_AES_CCM_ICV8,  256, "AES-CCM-256 with 8 octet ICV [RFC5282]"  },
+    { ENCR_AES_CCM_ICV12, 128, "AES-CCM-128 with 12 octet ICV [RFC5282]" },
+    { ENCR_AES_CCM_ICV12, 192, "AES-CCM-192 with 12 octet ICV [RFC5282]" },
+    { ENCR_AES_CCM_ICV12, 256, "AES-CCM-256 with 12 octet ICV [RFC5282]" },
+    { ENCR_AES_CCM_ICV16, 128, "AES-CCM-128 with 16 octet ICV [RFC5282]" },
+    { ENCR_AES_CCM_ICV16, 192, "AES-CCM-192 with 16 octet ICV [RFC5282]" },
+    { ENCR_AES_CCM_ICV16, 256, "AES-CCM-256 with 16 octet ICV [RFC5282]" },
+};
+
+/**
+ * Wireshark IKE algorithms for integrity
+ */
+static algo_map_t ike_integ[] = {
+    { AUTH_HMAC_MD5_96,       -1, "HMAC_MD5_96 [RFC2403]"       },
+    { AUTH_HMAC_SHA1_96,      -1, "HMAC_SHA1_96 [RFC2404]"      },
+    { AUTH_HMAC_MD5_128,      -1, "HMAC_MD5_128 [RFC4595]"      },
+    { AUTH_HMAC_SHA1_160,     -1, "HMAC_SHA1_160 [RFC4595]"     },
+    { AUTH_HMAC_SHA2_256_128, -1, "HMAC_SHA2_256_128 [RFC4868]" },
+    { AUTH_HMAC_SHA2_384_192, -1, "HMAC_SHA2_384_192 [RFC4868]" },
+    { AUTH_HMAC_SHA2_512_256, -1, "HMAC_SHA2_512_256 [RFC4868]" },
+    { AUTH_HMAC_SHA2_256_96,  -1, "HMAC_SHA2_256_96 [draft-ietf-ipsec-ciph-sha-256-00]" },
+    { AUTH_UNDEFINED,         -1, "NONE [RFC4306]"              },
+};
+
+#define countof(array) (sizeof(array)/sizeof((array)[0]))
+
+/**
+ * Map an IKE proposal
+ */
+static inline void ike_names(uint16_t enc_alg, int enc_len, uint16_t auth_alg, const char **enc,
+	  const char **integ)
+{
+	*enc = algo_name(ike_encr, countof(ike_encr), enc_alg, enc_len);
+	if (encryption_algorithm_is_aead(enc_alg))
+	{
+		auth_alg = AUTH_UNDEFINED;
+	}
+	*integ = algo_name(ike_integ, countof(ike_integ), auth_alg, -1);
+}
+
+/**
+ * Wireshark ESP algorithm identifiers for encryption
+ */
+static algo_map_t esp_encr[] = {
+    { ENCR_NULL,          -1, "NULL"                    },
+    { ENCR_3DES,          -1, "TripleDes-CBC [RFC2451]" },
+    { ENCR_AES_CBC,       -1, "AES-CBC [RFC3602]"       },
+    { ENCR_AES_CTR,       -1, "AES-CTR [RFC3686]"       },
+    { ENCR_DES,           -1, "DES-CBC [RFC2405]"       },
+    { ENCR_CAST,          -1, "CAST5-CBC [RFC2144]"     },
+    { ENCR_BLOWFISH,      -1, "BLOWFISH-CBC [RFC2451]"  },
+    { ENCR_TWOFISH_CBC,   -1, "TWOFISH-CBC"             },
+    { ENCR_AES_GCM_ICV8,  -1, "AES-GCM [RFC4106]"       },
+    { ENCR_AES_GCM_ICV12, -1, "AES-GCM [RFC4106]"       },
+    { ENCR_AES_GCM_ICV16, -1, "AES-GCM [RFC4106]"       },
+};
+
+/**
+ * Wireshark ESP algorithms for integrity
+ */
+static algo_map_t esp_integ[] = {
+    { AUTH_HMAC_SHA1_96,       -1, "HMAC-SHA-1-96 [RFC2404]"                  },
+    { AUTH_HMAC_MD5_96,        -1, "HMAC-MD5-96 [RFC2403]"                    },
+    { AUTH_HMAC_SHA2_256_128,  -1, "HMAC-SHA-256-128 [RFC4868]"               },
+    { AUTH_HMAC_SHA2_384_192,  -1, "HMAC-SHA-384-192 [RFC4868]"               },
+    { AUTH_HMAC_SHA2_512_256,  -1, "HMAC-SHA-512-256 [RFC4868]"               },
+    { AUTH_HMAC_SHA2_256_96,   -1, "HMAC-SHA-256-96 [draft-ietf-ipsec-ciph-sha-256-00]" },
+    { AUTH_HMAC_SHA2_256_256,  -1, "ANY 256 bit authentication [no checking]" },
+    { AUTH_UNDEFINED,          64, "ANY 64 bit authentication [no checking]"  },
+    { AUTH_UNDEFINED,          96, "ANY 96 bit authentication [no checking]"  },
+    { AUTH_UNDEFINED,         128, "ANY 128 bit authentication [no checking]" },
+    { AUTH_UNDEFINED,         192, "ANY 192 bit authentication [no checking]" },
+    { AUTH_UNDEFINED,         256, "ANY 256 bit authentication [no checking]" },
+    { AUTH_UNDEFINED,          -1, "NULL"                                     },
+};
+
+/**
+ * Map an ESP proposal
+ */
+static inline void esp_names(uint16_t enc_alg, uint16_t enc_len, uint16_t auth_alg, const char **enc,
+	  const char **integ)
+{
+	*enc = algo_name(esp_encr, countof(esp_encr), enc_alg, enc_len);
+	uint16_t auth_len = -1;
+	{
+		switch (enc_alg)
+		{
+		case ENCR_AES_GCM_ICV8:
+			auth_len = 64;
+			break;
+		case ENCR_AES_GCM_ICV12:
+			auth_len = 96;
+			break;
+		case ENCR_AES_GCM_ICV16:
+			auth_len = 128;
+			break;
+		}
+		auth_alg = AUTH_UNDEFINED;
+	}
+	*integ = algo_name(esp_integ, countof(esp_integ), auth_alg, auth_len);
+}
+
+// -----------------------------------------------------------------------------
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2022 Wataru Ashihara
+
+// { char buf[3] = {'z', 'z', 'z'}; to_hex(buf, sizeof(buf), "a", 1); }
+// { char buf[2] = {'z', 'z'     }; to_hex(buf, sizeof(buf), "a", 1); }
+static int to_hex(char buf[], size_t buf_size, const char *data, size_t data_size) {
+  char *cp = buf;
+  for (size_t i = 0; i < data_size; i++) {
+    if (cp >= buf + buf_size) {
+      return -1;
+    }
+    cp += (cp >= buf + buf_size) ? 0 : snprintf(cp, buf_size - (cp - buf), "%02hhx", data[i]);
+  }
+  if (cp >= buf + buf_size) {
+    return -1;
+  }
+  return 0;
+}
+
+// -----------------------------------------------------------------------------
+/*
+ * Copyright (c) 2023, Internet Initiative Japan, Inc.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+static int
+wireshark_decryption_table_line(char buf[], size_t buf_size, const struct iked_sa *sa, uint64_t ispi, uint64_t rspi)
+{
+	if (buf_size == 0) {
+		log_warnx("%d", __LINE__);
+		return -1;
+	}
+
+	if (sa->sa_hdr.sh_ispi != (sa->sa_hdr.sh_initiator ? ispi : rspi)) {
+		log_warnx("%d", __LINE__);
+		return -1;
+	}
+	if (sa->sa_hdr.sh_rspi != (sa->sa_hdr.sh_initiator ? rspi : ispi)) {
+		log_warnx("%d", __LINE__);
+		return -1;
+	}
+
+	const char *enc = NULL, *integ = NULL;
+	ike_names(sa->sa_encr->encr_id, cipher_keylength(sa->sa_encr) * 8, sa->sa_integr->hash_id, &enc, &integ);
+	if (enc == NULL || integ == NULL) {
+		log_warnx("%d", __LINE__);
+		buf[0] = '\0';
+		return -1;
+	}
+	char sk_ai[1024]; if (to_hex(sk_ai, sizeof(sk_ai), sa->sa_key_iauth->buf, ibuf_length(sa->sa_key_iauth)) == -1) { log_warnx("%d", __LINE__); }
+	char sk_ar[1024]; if (to_hex(sk_ar, sizeof(sk_ar), sa->sa_key_rauth->buf, ibuf_length(sa->sa_key_rauth)) == -1) { log_warnx("%d", __LINE__); }
+	char sk_ei[1024]; if (to_hex(sk_ei, sizeof(sk_ei), sa->sa_key_iencr->buf, ibuf_length(sa->sa_key_iencr)) == -1) { log_warnx("%d", __LINE__); }
+	char sk_er[1024]; if (to_hex(sk_er, sizeof(sk_er), sa->sa_key_rencr->buf, ibuf_length(sa->sa_key_rencr)) == -1) { log_warnx("%d", __LINE__); }
+	int needed_strlen = snprintf(buf, buf_size, "%.16"PRIx64",%.16"PRIx64",%s,%s,\"%s\",%s,%s,\"%s\"\n",
+		ispi, rspi, sk_ei, sk_er, enc, sk_ai, sk_ar, integ);
+	if ((size_t)needed_strlen >= buf_size) {
+		log_warnx("%d", __LINE__);
+		return -1;
+	}
+
+	// esp_names(sa->sa_childsas...
+
+	return 0;
+}
+
+static void
+wireshark_decryption_table_line_print(const struct iked_sa *sa, uint64_t ispi, uint64_t rspi)
+{
+	char buf[1024];
+	if (wireshark_decryption_table_line(buf, sizeof(buf), sa, ispi, rspi) == -1)
+		return;
+	fprintf(stderr, "%s\n", buf);
+	__asm__("nop");
 }

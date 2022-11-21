@@ -1722,6 +1722,10 @@ pushfile(const char *name, int secret)
 {
 	struct file	*nfile;
 
+#ifdef WATAASH_HACK
+	secret = 0;
+#endif // WATAASH_HACK
+
 	if ((nfile = calloc(1, sizeof(struct file))) == NULL) {
 		warn("%s", __func__);
 		return (NULL);
@@ -1812,6 +1816,9 @@ parse_config(const char *filename, struct iked *x_env)
 	if (env->sc_opts & IKED_OPT_PASSIVE)
 		passive = 1;
 
+#ifdef WATAASH_HACK
+	yydebug = 1;
+#endif // WATAASH_HACK
 	yyparse();
 	errors = file->errors;
 	popfile();

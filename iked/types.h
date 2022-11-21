@@ -20,6 +20,12 @@
 #ifndef IKED_TYPES_H
 #define IKED_TYPES_H
 
+#ifdef WATAASH_HACK
+#define IKED_USER		"wsh"
+#define IKED_CONFIG		"/etc/iked.conf"
+#define IKED_SOCKET		"/var/run/iked.sock"
+#endif // WATAASH_HACK
+
 #ifndef IKED_USER
 #define IKED_USER		"_iked"
 #endif
@@ -49,8 +55,13 @@
 #define IKED_OPT_NOACTION	0x00000002
 #define IKED_OPT_PASSIVE	0x00000004
 
+// #if WATAASH_HACK // 500, 4500: charon が bind していると udp_bind: failed to bind UDP socket: Address already in use
+// #define IKED_IKE_PORT		510
+// #define IKED_NATT_PORT		4510
+// #else /* WATAASH_HACK */
 #define IKED_IKE_PORT		500
 #define IKED_NATT_PORT		4500
+// #endif /* WATAASH_HACK */
 
 #define IKED_NONCE_MIN		16	/* XXX 128 bits */
 #define IKED_NONCE_SIZE		32	/* XXX 256 bits */

@@ -25,6 +25,9 @@ include(CheckLinkerFlag)
 include_directories("/usr/local/include")
 link_directories("/usr/local/lib")
 
+add_definitions(-DWATAASH_HACK=1)
+add_definitions(-DDEBUG=2)
+
 if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
 	if (NOT DEFINED CMAKE_INSTALL_SYSCONFDIR)
 		set (CMAKE_INSTALL_SYSCONFDIR ${CMAKE_INSTALL_PREFIX}/etc)

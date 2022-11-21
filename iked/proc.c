@@ -563,6 +563,20 @@ proc_run(struct privsep *ps, struct privsep_proc *p,
 
 	setproctitle("%s", p->p_title);
 
+	// @wataash:debug-init:v6
+#if 0
+	// PROC_CONTROL PROC_CERT PROC_IKEV2
+	if (p->p_id == PROC_IKEV2) {
+		for (;;) {
+			volatile unsigned int break_ = 0;
+			__asm__("nop"); // gdb: break if break_ = 1
+			if (break_)
+				break;
+			__asm__("nop");
+		}
+	}
+#endif
+
 	if (setgroups(1, &pw->pw_gid) ||
 	    setresgid(pw->pw_gid, pw->pw_gid, pw->pw_gid) ||
 	    setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid))
